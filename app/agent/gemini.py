@@ -222,7 +222,7 @@ def create_analysis_plan(prompt: str) -> AnalysisPlan:
 
     print("Creating plan....")
 
-    planning_prompt = f"""
+    system_instruction = """
                 You are the planning component of a geospatial analysis agent.
 
                 Your job is to determine which available analyses
@@ -246,16 +246,13 @@ def create_analysis_plan(prompt: str) -> AnalysisPlan:
                 order they should be performed.
                 - Do not perform the analysis yourself.
                 - Do not invent numerical results.
-
-                User question:
-
-                {prompt}
                 """
 
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=planning_prompt,
+        contents=prompt,
         config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
             response_mime_type="application/json",
             response_schema=AnalysisPlan,
         ),
