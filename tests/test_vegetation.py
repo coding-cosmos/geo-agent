@@ -49,7 +49,7 @@ def test_analyze_ndvi_no_usable_images(mock_build_ndvi_collection, mock_dictiona
     mock_build_ndvi_collection.return_value = (MagicMock(), MagicMock())
 
     mock_dict_instance = MagicMock()
-    mock_dict_instance.getInfo.return_value = {"source": 10, "usable": 0}
+    mock_dict_instance.getInfo.return_value = {"counts": {"source": 10, "usable": 0}, "analysis": None}
     mock_dictionary.return_value = mock_dict_instance
 
     with pytest.raises(ValueError, match="No usable Sentinel-2 images were found"):
@@ -77,15 +77,14 @@ def test_analyze_ndvi_success(
 
     mock_dict_instance = MagicMock()
 
-    # We will need to return different values for different calls to ee.Dictionary().getInfo()
-    # The first call is for counts, the second is for the results
-    mock_dict_instance.getInfo.side_effect = [
-        {"source": 10, "usable": 5},
-        {
+    # The .getInfo() call returns a single nested dictionary with counts and analysis
+    mock_dict_instance.getInfo.return_value = {
+        "counts": {"source": 10, "usable": 5},
+        "analysis": {
             "statistics": {"mean": 0.5, "min": 0.1, "max": 0.9, "std_dev": 0.2},
             "valid_coverage": 0.8,
         },
-    ]
+    }
     mock_dictionary.return_value = mock_dict_instance
 
     result = analyze_ndvi(
