@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import ee
 
 from app.analysis.landcover import analyze_landcover
