@@ -24,7 +24,7 @@ def build_landcover_collection(
     aoi: ee.Geometry,
     start_date: str,
     end_date: str,
-) -> tuple[ee.ImageCollection, int]:
+) -> tuple[ee.ImageCollection, ee.Number]:
     """
     Build a Dynamic World collection filtered
     by AOI and date.
@@ -34,7 +34,7 @@ def build_landcover_collection(
             Dynamic World images for the AOI and period.
 
         source_image_count:
-            Number of source images found.
+            Number of source images found (as an EE Number).
     """
 
     collection = (
@@ -43,19 +43,19 @@ def build_landcover_collection(
         .filterDate(start_date, end_date)
     )
 
-    source_image_count = collection.size().getInfo()
+    source_image_count = collection.size()
 
     return collection, source_image_count
 
 
-def calculate_landcover_distribution(
+def build_landcover_histogram(
     composite: ee.Image,
     aoi: ee.Geometry,
     scale: int = 10,
-) -> dict[str, float]:
+) -> ee.Element:
     """
-    Calculate the percentage of the AOI belonging
-    to each Dynamic World land-cover class.
+    Build the Earth Engine histogram dictionary representing
+    pixel counts for each land-cover class.
     """
 
     histogram = (
@@ -68,28 +68,19 @@ def calculate_landcover_distribution(
             bestEffort=True,
         )
         .get("label")
-        .getInfo()
     )
 
-    if not histogram:
-        return {}
-
-    total_pixels = sum(histogram.values())
-
-    return {
-        LAND_COVER_CLASSES[int(class_id)]: (count / total_pixels)
-        for class_id, count in histogram.items()
-    }
+    return histogram
 
 
-def calculate_valid_coverage(
+def build_valid_coverage(
     image: ee.Image,
     aoi: ee.Geometry,
     scale: int = 10,
-) -> float:
+) -> ee.Element:
     """
     Estimate the fraction of the AOI containing a valid
-    Dynamic World land-cover label.
+    Dynamic World land-cover label (as an EE Element).
     """
 
     valid_mask = image.select("label").mask().rename("valid")
@@ -102,12 +93,25 @@ def calculate_valid_coverage(
         bestEffort=True,
     ).get("valid")
 
-    coverage_value = coverage.getInfo()
+    return coverage
 
-    if coverage_value is None:
-        return 0.0
 
-    return float(coverage_value)
+def format_landcover_distribution(histogram: dict | None) -> dict[str, float]:
+    """
+    Format the raw histogram dictionary into a percentage-based distribution
+    with named classes.
+    """
+    if not histogram:
+        return {}
+
+    total_pixels = sum(histogram.values())
+    if total_pixels == 0:
+        return {}
+
+    return {
+        LAND_COVER_CLASSES[int(class_id)]: (count / total_pixels)
+        for class_id, count in histogram.items()
+    }
 
 
 def analyze_landcover(
@@ -129,25 +133,49 @@ def analyze_landcover(
     if scale <= 0:
         raise ValueError("scale must be greater than zero")
 
-    collection, source_image_count = build_landcover_collection(
+    collection, source_image_count_ee = build_landcover_collection(
         aoi=aoi,
         start_date=start_date,
         end_date=end_date,
     )
 
-    if source_image_count == 0:
-        raise ValueError(
-            "No Dynamic World images were found " "for the supplied AOI and date range."
-        )
-
     # Dynamic World labels are categorical,
     # therefore use mode rather than median.
     composite = collection.select("label").mode()
 
-    distribution = calculate_landcover_distribution(
+    histogram_ee = build_landcover_histogram(
         composite=composite,
         aoi=aoi,
         scale=scale,
+    )
+
+    coverage_ee = build_valid_coverage(
+        image=composite,
+        aoi=aoi,
+        scale=scale,
+    )
+
+    combined_info = ee.Dictionary({
+        "source_image_count": source_image_count_ee,
+        "histogram": histogram_ee,
+        "coverage": coverage_ee
+    }).getInfo()
+
+    source_image_count = combined_info.get("source_image_count", 0)
+
+    if source_image_count == 0:
+        raise ValueError(
+            "No Dynamic World images were found "
+            "for the supplied AOI and date range."
+        )
+
+    distribution = format_landcover_distribution(
+        combined_info.get("histogram")
+    )
+
+    coverage_value = combined_info.get("coverage")
+    valid_coverage = (
+        float(coverage_value) if coverage_value is not None else 0.0
     )
 
     return AnalysisResult(
@@ -160,11 +188,7 @@ def analyze_landcover(
         data_quality=DataQuality(
             source_image_count=source_image_count,
             usable_image_count=source_image_count,
-            valid_coverage=calculate_valid_coverage(
-                image=composite,
-                aoi=aoi,
-                scale=scale,
-            ),
+            valid_coverage=valid_coverage,
         ),
         methodology=Methodology(
             dataset=DW_DATASET,
@@ -177,7 +201,8 @@ def analyze_landcover(
             index="Dynamic World land-cover label",
         ),
         limitations=[
-            "Land-cover labels represent the most probable " "class for each pixel.",
+            "Land-cover labels represent the most probable "
+            "class for each pixel.",
             "This PoC does not yet use Dynamic World "
             "class probabilities to filter low-confidence pixels.",
             "The mode composite represents the dominant "
