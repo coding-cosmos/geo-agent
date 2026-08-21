@@ -232,19 +232,7 @@ def analyze_ndvi(
         max_cloud_percentage=max_cloud_percentage,
     )
 
-    # Fetch counts early to avoid exception on empty collection
-    counts = ee.Dictionary(
-        {
-            "source": source_image_count,
-            "usable": collection.size(),
-        }
-    ).getInfo()
-
-    if counts["usable"] == 0:
-        raise ValueError(
-            "No usable Sentinel-2 images were found "
-            "for the supplied AOI and date range."
-        )
+    usable_image_count = collection.size()
 
     # Create one representative image for the period.
     ndvi_composite = collection.median()
@@ -261,13 +249,43 @@ def analyze_ndvi(
         scale=scale,
     )
 
-    # Batch remaining Earth Engine API calls into a single request
-    results = ee.Dictionary(
-        {
-            "statistics": statistics_dict,
-            "valid_coverage": valid_coverage_number,
-        }
-    ).getInfo()
+    # Conditionally execute calculations to avoid exceptions on empty collections
+    # and batch Earth Engine API calls into a single request
+    combined_results = ee.Algorithms.If(
+        usable_image_count.gt(0),
+        ee.Dictionary(
+            {
+                "counts": {
+                    "source": source_image_count,
+                    "usable": usable_image_count,
+                },
+                "analysis": {
+                    "statistics": statistics_dict,
+                    "valid_coverage": valid_coverage_number,
+                },
+            }
+        ),
+        ee.Dictionary(
+            {
+                "counts": {
+                    "source": source_image_count,
+                    "usable": usable_image_count,
+                },
+                "analysis": None,
+            }
+        ),
+    )
+
+    results = ee.Dictionary(combined_results).getInfo()
+    counts = results["counts"]
+
+    if counts["usable"] == 0:
+        raise ValueError(
+            "No usable Sentinel-2 images were found "
+            "for the supplied AOI and date range."
+        )
+
+    analysis = results["analysis"]
 
     limitations = [
         ("NDVI is a vegetation indicator and should not "
@@ -282,18 +300,18 @@ def analyze_ndvi(
     return AnalysisResult(
         analysis_type="ndvi_analysis",
         findings={
-            "mean_ndvi": float(results["statistics"].get("mean", 0.0)),
-            "minimum_ndvi": float(results["statistics"].get("min", 0.0)),
-            "maximum_ndvi": float(results["statistics"].get("max", 0.0)),
-            "ndvi_std_dev": float(results["statistics"].get("std_dev", 0.0)),
+            "mean_ndvi": float(analysis["statistics"].get("mean", 0.0)),
+            "minimum_ndvi": float(analysis["statistics"].get("min", 0.0)),
+            "maximum_ndvi": float(analysis["statistics"].get("max", 0.0)),
+            "ndvi_std_dev": float(analysis["statistics"].get("std_dev", 0.0)),
             "start_date": start_date,
             "end_date": end_date,
         },
         data_quality=DataQuality(
             source_image_count=int(counts["source"]),
             usable_image_count=int(counts["usable"]),
-            valid_coverage=float(results["valid_coverage"])
-            if results["valid_coverage"] is not None
+            valid_coverage=float(analysis["valid_coverage"])
+            if analysis["valid_coverage"] is not None
             else 0.0,
         ),
         methodology=Methodology(
