@@ -1,3 +1,6 @@
 ## 2025-02-23 - Batch Google Earth Engine `.getInfo()` calls
 **Learning:** Multiple synchronous `.getInfo()` calls to the Google Earth Engine API represent a significant performance bottleneck due to blocking network HTTP requests. Local Python fallback logic (like `.get("key", 0.0)`) cannot be directly applied to Earth Engine proxy objects (`ee.ComputedObject`) without causing client-side crashes, and unsafe casting of potentially `null` values returned by server operations (like `reduceRegion` on masked areas) will cause server-side crashes.
 **Action:** Always batch evaluations of multiple Earth Engine objects (counts, statistics, coverages) into a single `ee.Dictionary` or `ee.List` and make one `.getInfo()` call. When replacing Python dictionary access or handling potentially `null` values on the server side, always use native Earth Engine methods (e.g., `ee.Algorithms.If` and `dictionary.contains()`) to safely handle missing keys and prevent crashes.
+
+### Gemini Caching Optimization
+- When dynamically generating schemas or configuration objects like Gemini tool declarations inside functions called frequently (e.g. `get_gemini_tool_declarations`), apply `@functools.lru_cache(maxsize=None)` if the underlying schemas don't change at runtime. This avoids CPU overhead from rebuilding dictionaries repeatedly.

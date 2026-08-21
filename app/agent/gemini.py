@@ -1,5 +1,7 @@
 # app/agent/gemini.py
 import os
+import json
+import functools
 
 from dotenv import load_dotenv
 from google import genai
@@ -57,6 +59,7 @@ def make_gemini_parameters(schema: dict) -> dict:
     return parameters
 
 
+@functools.lru_cache(maxsize=None)
 def get_gemini_tool_declarations():
     declarations = []
 
