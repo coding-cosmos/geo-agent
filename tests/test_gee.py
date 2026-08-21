@@ -1,40 +1,40 @@
 import pytest
-from unittest.mock import patch, call
+from unittest.mock import patch
 from app.gee import initialize_gee
 
-@patch("app.gee.ee")
-def test_initialize_gee_success_first_try(mock_ee):
-    """Test successful initialization where ee.Initialize works on the first try."""
-    mock_ee.Initialize.return_value = None
 
-    initialize_gee("test-project-id")
+def test_initialize_gee_success():
+    """Test that initialize_gee succeeds when ee.Initialize succeeds."""
+    with patch("app.gee.ee.Initialize") as mock_initialize:
+        initialize_gee("test-project")
+        mock_initialize.assert_called_once_with(project="test-project")
 
-    mock_ee.Initialize.assert_called_once_with(project="test-project-id")
-    mock_ee.Authenticate.assert_not_called()
 
-@patch("app.gee.ee")
-def test_initialize_gee_fallback_authentication(mock_ee):
-    """Test fallback authentication where ee.Initialize fails on the first try."""
-    # First call to Initialize raises an Exception, second call succeeds
-    mock_ee.Initialize.side_effect = [Exception("Initialization failed"), None]
+def test_initialize_gee_failure():
+    """Test that initialize_gee raises a RuntimeError when ee.Initialize fails."""
+    with patch("app.gee.ee.Initialize") as mock_initialize:
+        # Simulate an authentication or initialization failure
+        mock_initialize.side_effect = Exception("Google Cloud error")
 
-    initialize_gee("test-project-id")
+        with pytest.raises(RuntimeError) as exc_info:
+            initialize_gee("test-project")
 
-    assert mock_ee.Initialize.call_count == 2
-    mock_ee.Initialize.assert_has_calls([
-        call(project="test-project-id"),
-        call(project="test-project-id")
-    ])
-    mock_ee.Authenticate.assert_called_once()
+        assert "Failed to initialize Earth Engine" in str(exc_info.value)
+        mock_initialize.assert_called_once_with(project="test-project")
 
-@patch("app.gee.ee")
-def test_initialize_gee_failure_after_authentication(mock_ee):
-    """Test failure scenario where initialization continues to fail even after authentication."""
-    # Both calls to Initialize raise an Exception
-    mock_ee.Initialize.side_effect = [Exception("First failure"), Exception("Second failure")]
 
-    with pytest.raises(Exception, match="Second failure"):
-        initialize_gee("test-project-id")
+def test_initialize_gee_no_authenticate():
+    """Test that initialize_gee does not call ee.Authenticate under any circumstances."""
+    with patch("app.gee.ee.Initialize") as mock_initialize, \
+         patch("app.gee.ee.Authenticate") as mock_authenticate:
 
-    assert mock_ee.Initialize.call_count == 2
-    mock_ee.Authenticate.assert_called_once()
+        # Test success case
+        initialize_gee("test-project")
+        mock_authenticate.assert_not_called()
+
+        # Test failure case
+        mock_initialize.side_effect = Exception("Google Cloud error")
+        with pytest.raises(RuntimeError):
+            initialize_gee("test-project")
+
+        mock_authenticate.assert_not_called()
