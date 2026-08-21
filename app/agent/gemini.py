@@ -250,9 +250,15 @@ def create_analysis_plan(prompt: str) -> AnalysisPlan:
                 - Do not invent numerical results.
                 """
 
+    user_content = f"""
+                User question:
+
+                {prompt}
+                """
+
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=prompt,
+        contents=user_content,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             response_mime_type="application/json",
@@ -282,7 +288,7 @@ def synthesize_analysis_results(
             }
         )
 
-    synthesis_prompt = f"""
+    system_instruction = """
                 You are the synthesis component of a geospatial
                 analysis agent.
 
@@ -300,6 +306,10 @@ def synthesize_analysis_results(
                 If an analysis failed validation, do not present its
                 results as reliable evidence.
 
+                Provide a concise, evidence-backed answer.
+                """
+
+    user_content = f"""
                 User question:
                 {prompt}
 
@@ -308,13 +318,14 @@ def synthesize_analysis_results(
 
                 Evidence:
                 {evidence}
-
-                Provide a concise, evidence-backed answer.
                 """
 
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=synthesis_prompt,
+        contents=user_content,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+        ),
     )
 
     return response.text
