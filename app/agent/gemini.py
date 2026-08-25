@@ -105,6 +105,7 @@ def ask_gemini(
     config = types.GenerateContentConfig(
         tools=[tool],
         automatic_function_calling=(types.AutomaticFunctionCallingConfig(disable=True)),
+        system_instruction="You are a helpful geospatial analysis agent. You only have access to specific analysis tools. When an analysis is requested, call the tool.",
     )
 
     return client.models.generate_content(
@@ -150,6 +151,7 @@ def generate_final_response(
     config = types.GenerateContentConfig(
         tools=[tool],
         automatic_function_calling=(types.AutomaticFunctionCallingConfig(disable=True)),
+        system_instruction="You are a helpful geospatial analysis agent. You only have access to specific analysis tools.",
     )
 
     final_response = client.models.generate_content(
@@ -188,21 +190,6 @@ def generate_replan_response(
                 )
             ],
         ),
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_text(
-                    text=(
-                        "The analysis failed validation. "
-                        "Do not provide a final answer yet. "
-                        "Inspect the validation issues and "
-                        "choose the next appropriate tool action. "
-                        "Only use the available tools and their "
-                        "declared parameters."
-                    )
-                )
-            ],
-        ),
     ]
 
     declarations = get_gemini_tool_declarations()
@@ -212,6 +199,14 @@ def generate_replan_response(
     config = types.GenerateContentConfig(
         tools=[tool],
         automatic_function_calling=(types.AutomaticFunctionCallingConfig(disable=True)),
+        system_instruction=(
+            "The analysis failed validation. "
+            "Do not provide a final answer yet. "
+            "Inspect the validation issues and "
+            "choose the next appropriate tool action. "
+            "Only use the available tools and their "
+            "declared parameters."
+        ),
     )
 
     return client.models.generate_content(
